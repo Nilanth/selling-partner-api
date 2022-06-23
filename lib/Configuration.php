@@ -1,7 +1,7 @@
 <?php
 /**
  * Configuration
- * PHP version 7.2
+ * PHP version 7.3
  *
  * @category Class
  * @package  SellingPartnerApi
@@ -15,11 +15,15 @@
 
 namespace SellingPartnerApi;
 
-use SellingPartnerApi\Authentication;
+use Exception;
+use GuzzleHttp\Psr7\Request;
+use InvalidArgumentException;
+use RuntimeException;
+use SellingPartnerApi\Contract\RequestSignerContract;
 
 /**
  * Configuration Class Doc Comment
- * PHP version 7.2
+ * PHP version 7.3
  *
  * @category Class
  * @package  SellingPartnerApi
@@ -27,42 +31,32 @@ use SellingPartnerApi\Authentication;
 class Configuration
 {
     /**
-     * @var Configuration
+     * @const array[string]
      */
-    private static $defaultConfiguration;
-
-    /**
-     * @var Authentication
-     */
-    private static $defaultAuthentication;
+    public const REQUIRED_CONFIG_KEYS = [
+        "lwaClientId", "lwaClientSecret", "awsAccessKeyId", "awsSecretAccessKey", "endpoint"
+    ];
 
     /**
      * Auth object for the SP API
      *
      * @var Authentication
      */
-    protected $auth = null;
+    protected $auth;
 
     /**
-     * Access token for OAuth
+     * The SP API endpoint. One of the constant values from the Endpoint class.
      *
-     * @var string
+     * @var array
      */
-    protected $accessToken = '';
-
-    /**
-     * The host
-     *
-     * @var string
-     */
-    protected $host = 'https://sellingpartnerapi-na.amazon.com';
+    protected $endpoint = Endpoint::NA;
 
     /**
      * User agent of the HTTP request, set to "OpenAPI-Generator/{version}/PHP" by default
      *
      * @var string
      */
-    protected $userAgent = 'SellingPartnerAPI/2.0.8 (Language=PHP)';
+    protected $userAgent = 'jlevers/selling-partner-api/5.1.0 (Language=PHP)';
 
     /**
      * Debug switch (default set to false)
@@ -80,72 +74,65 @@ class Configuration
 
     /**
      * Debug file location (log to STDOUT by default)
-nnn     *
+     *
      * @var string
      */
-    protected $tempFolderPath;
+    protected static $tempFolderPath = null;
+
+    /**
+     * @var RequestSignerContract
+     */
+    protected $requestSigner;
 
     /**
      * Constructor
+     * @param array $configurationOptions
+     * @throws Exception
      */
-    public function __construct(?array $lwaAuthInfo = null, ?string $host = null)
+    public function __construct(array $configurationOptions)
     {
-        if (!allVarsLoaded()) {
-            loadDotenv();
+        // Make sure all required configuration options are present
+        $missingKeys = [];
+        foreach (static::REQUIRED_CONFIG_KEYS as $key) {
+            if (!isset($configurationOptions[$key])) {
+                $missingKeys[] = $key;
+            }
+        }
+        if (count($missingKeys) > 0) {
+            throw new RuntimeException("Required configuration values were missing: " . implode(", ", $missingKeys));
         }
 
-        $this->lwaAuthInfo = $lwaAuthInfo;
-        $this->tempFolderPath = sys_get_temp_dir();
-
-        if ($host !== null) {
-            $this->host = $host;
-        } else {
-            $this->host = $_ENV["SPAPI_ENDPOINT"];
+        if (
+            (isset($configurationOptions["accessToken"]) && !isset($configurationOptions["accessTokenExpiration"])) ||
+            (!isset($configurationOptions["accessToken"]) && isset($configurationOptions["accessTokenExpiration"]))
+        ) {
+            throw new RuntimeException('If one of the `accessToken` or `accessTokenExpiration` configuration options is provided, the other must be provided as well');
         }
 
-        if ($this->lwaAuthInfo !== null) {
-            $this->auth = new Authentication($this->lwaAuthInfo);
-        } else {
-            $this->auth = self::getDefaultAuthentication();
-        }
+        $options = array_merge(
+            $configurationOptions,
+            [
+                "accessToken" => $configurationOptions["accessToken"] ?? null,
+                "accessTokenExpiration" => $configurationOptions["accessTokenExpiration"] ?? null,
+                "onUpdateCredentials" => $configurationOptions["onUpdateCredentials"] ?? null,
+                "roleArn" => $configurationOptions["roleArn"] ?? null,
+            ]
+        );
+
+        $this->endpoint = $options["endpoint"];
+        $this->auth = new Authentication($options);
+
+        $this->setRequestSigner($options["requestSigner"] ?? $this->auth);
     }
 
-    /**
-     * Sets the access token for OAuth
-     *
-     * @param string $accessToken Token for OAuth
-     *
-     * @return $this
-     */
-    public function setAccessToken($accessToken)
+    public function getRequestSigner(): RequestSignerContract
     {
-        $this->accessToken = $accessToken;
-        return $this;
+        return $this->requestSigner;
     }
 
-    /**
-     * Gets the access token for OAuth
-     *
-     * @param string $scope The authentication scope, if any
-     *
-     * @return string Access token for OAuth
-     */
-    public function getAccessToken($scope = null)
+    public function setRequestSigner(RequestSignerContract $requestSigner): void
     {
-        return $this->auth->getAuthToken($scope);
-    }
-
-    /**
-     * Sets the host
-     *
-     * @param string $host Host
-     *
-     * @return $this
-     */
-    public function setHost($host)
-    {
-        $this->host = $host;
-        return $this;
+        $this->requestSigner = $requestSigner;
     }
 
     /**
@@ -155,7 +142,7 @@ nnn     *
      */
     public function getHost()
     {
-        return $this->host;
+        return $this->endpoint["url"];
     }
 
     /**
@@ -175,13 +162,13 @@ nnn     *
      *
      * @param string $userAgent the user agent of the api client
      *
-     * @throws \InvalidArgumentException
+     * @throws InvalidArgumentException
      * @return $this
      */
     public function setUserAgent($userAgent)
     {
         if (!is_string($userAgent)) {
-            throw new \InvalidArgumentException('User-agent must be a string.');
+            throw new InvalidArgumentException("User-agent must be a string.");
         }
 
         $this->userAgent = $userAgent;
@@ -247,14 +234,16 @@ nnn     *
     /**
      * Sets the temp folder path
      *
-     * @param string $tempFolderPath Temp folder path
-     *
-     * @return $this
+     * @param ?string $tempFolderPath Temp folder path
+     * @return void
      */
-    public function setTempFolderPath($tempFolderPath)
+    public static function setTempFolderPath(?string $tempFolderPath = null): void
     {
-        $this->tempFolderPath = $tempFolderPath;
-        return $this;
+        if ($tempFolderPath === null) {
+            static::$tempFolderPath = sys_get_temp_dir();
+        } else {
+            static::$tempFolderPath = $tempFolderPath;
+        }
     }
 
     /**
@@ -262,91 +251,12 @@ nnn     *
      *
      * @return string Temp folder path
      */
-    public function getTempFolderPath()
+    public static function getTempFolderPath()
     {
-        return $this->tempFolderPath;
-    }
-
-    /**
-     * Delegator method. Performs any necessary operations to prepare the
-     * Authentication class to start generating a signed request
-     *
-     * @return void
-     */
-    public function startRequestGeneration() {
-        $this->auth->startRequestGeneration();
-    }
-
-    /**
-     * Delegator method. Performs any necessary operations to tell the Authentication
-     * class that we're done generating a signed request
-     */
-    public function endRequestGeneration() {
-        $this->auth->endRequestGeneration();
-    }
-
-    /**
-     * Gets the default configuration instance
-     *
-     * @return Configuration
-     */
-    public static function getDefaultConfiguration()
-    {
-        if (self::$defaultConfiguration === null) {
-            $config = new Configuration();
-            $auth = self::getDefaultAuthentication();
-
-            if (!allVarsLoaded()) {
-                loadDotenv();
-            }
-
-            $config->setHost($_ENV["SPAPI_ENDPOINT"]);
-            self::$defaultConfiguration = $config;
+        if (isset(static::$tempFolderPath) || static::$tempFolderPath === null) {
+            static::setTempFolderPath();
         }
-
-        return self::$defaultConfiguration;
-    }
-
-    /**
-     * Sets the detault configuration instance
-     *
-     * @param Configuration $config An instance of the Configuration Object
-     *
-     * @return void
-     */
-    public static function setDefaultConfiguration(Configuration $config)
-    {
-        self::$defaultConfiguration = $config;
-    }
-
-    /**
-     * Gets the default authentication instance
-     *
-     * @return Authentication
-     */
-    public static function getDefaultAuthentication()
-    {
-        if (self::$defaultAuthentication === null) {
-            self::setDefaultAuthentication();
-        }
-        return self::$defaultAuthentication;
-    }
-
-    /**
-     * Sets the default authentication instance
-     *
-     * @param Authentication $auth An instance of the Authentication class
-     *
-     * @return void
-     */
-    public static function setDefaultAuthentication($auth = null)
-    {
-        if ($auth !== null) {
-            self::$defaultAuthentication = $auth;
-        } else if (self::$defaultAuthentication === null) {
-            self::$defaultAuthentication = new Authentication();
-        }
-        return self::$defaultAuthentication;
+        return static::$tempFolderPath;
     }
 
     /**
@@ -360,58 +270,169 @@ nnn     *
     }
 
     /**
+     * Get LWA client ID.
+     * 
+     * @return string
+     */
+    public function getLwaClientId(): ?string
+    {
+        return $this->auth->getLwaClientId();
+    }
+
+    /**
+     * Set LWA client ID.
+     * 
+     * @param string $lwaClientId
+     * @return void
+     */
+    public function setLwaClientId(string $lwaClientId): void
+    {
+        $this->auth->setLwaClientId($lwaClientId);
+    }
+
+    /**
+     * Get LWA client secret.
+     * 
+     * @return string
+     */
+    public function getLwaClientSecret(): ?string
+    {
+        return $this->auth->getLwaClientSecret();
+    }
+
+    /**
+     * Set LWA client secret.
+     * 
+     * @param string $lwaClientSecret
+     * @return void
+     */
+    public function setLwaClientSecret(string $lwaClientSecret): void
+    {
+        $this->auth->setLwaClientSecret($lwaClientSecret);
+    }
+
+    /**
+     * Get LWA refresh token.
+     * 
+     * @return string
+     */
+    public function getLwaRefreshToken(): ?string
+    {
+        return $this->auth->getLwaRefreshToken();
+    }
+
+    /**
+     * Set LWA refresh token.
+     * 
+     * @param string|null $lwaRefreshToken
+     * @return void
+     */
+    public function setLwaRefreshToken(?string $lwaRefreshToken = null): void
+    {
+        $this->auth->setLwaRefreshToken($lwaRefreshToken);
+    }
+
+    /**
+     * Get AWS access key ID.
+     * 
+     * @return string
+     */
+    public function getAwsAccessKeyId(): ?string
+    {
+        return $this->auth->getAwsAccessKeyId();
+    }
+
+    /**
+     * Set AWS access key ID.
+     * 
+     * @param string $awsAccessKeyId
+     * @return void
+     */
+    public function setAwsAccessKeyId(string $awsAccessKeyId): void
+    {
+        $this->auth->setAwsAccessKeyId($awsAccessKeyId);
+    }
+
+    /**
+     * Get AWS secret access key.
+     * 
+     * @return string|null
+     */
+    public function getAwsSecretAccessKey(): ?string
+    {
+        return $this->auth->getAwsSecretAccessKey();
+    }
+
+    /**
+     * Set AWS secret access key.
+     * 
+     * @param string $awsSecretAccessKey
+     * @return void
+     */
+    public function setAwsSecretAccessKey(string $awsSecretAccessKey): void
+    {
+        $this->auth->setAwsSecretAccessKey($awsSecretAccessKey);
+    }
+
+    /**
+     * Get current SP API endpoint.
+     *
+     * @return array
+     */
+    public function getEndpoint(): array
+    {
+        return $this->endpoint;
+    }
+
+    /**
+     * Set SP API endpoint. $endpoint should be one of the constants from Endpoint.php.
+     * 
+     * @param array $endpoint
+     * @return void
+     * @throws RuntimeException
+     */
+    public function setEndpoint(array $endpoint): void
+    {
+        if (!array_key_exists('url', $endpoint) || !array_key_exists('region', $endpoint)) {
+            throw new RuntimeException('$endpoint must contain `url` and `region` keys');
+        }
+
+        $this->endpoint = $endpoint;
+        $this->auth->setEndpoint($endpoint);
+    }
+
+    /**
      * Sign a request to the Selling Partner API using the AWS Signature V4 protocol.
      *
-     * @param \GuzzleHttp\Psr7\Request $request The request to sign
+     * @param Request $request The request to sign
      * @param string $scope The scope of the request, if it's grantless
      *
-     * @return \GuzzleHttp\Psr7\Request The signed request
+     * @return Request The signed request
      */
-    public function signRequest($request, $scope = null)
+    public function signRequest($request, $scope = null, $restrictedPath = null, $operation = null)
     {
-        return $this->auth->signRequest($request, $scope);
+        return $this->requestSigner->signRequest($request, $scope, $restrictedPath, $operation);
     }
 
     /**
      * Gets the essential information for debugging
      *
+     * @param string|null $tempFolderPath The path to the temp folder.
      * @return string The report for debugging
      */
-    public static function toDebugReport()
+    public static function toDebugReport(?string $tempFolderPath = null)
     {
+        if ($tempFolderPath === null) {
+            $tempFolderPath = static::getTempFolderPath();
+        }
         $report  = 'PHP SDK (SellingPartnerApi) Debug Report:' . PHP_EOL;
         $report .= '    OS: ' . php_uname() . PHP_EOL;
         $report .= '    PHP Version: ' . PHP_VERSION . PHP_EOL;
         $report .= '    The version of the OpenAPI document: 2020-11-01' . PHP_EOL;
-        $report .= '    SDK Package Version: 2.0.8' . PHP_EOL;
-        $report .= '    Temp Folder Path: ' . self::getDefaultConfiguration()->getTempFolderPath() . PHP_EOL;
+        $report .= '    SDK Package Version: 5.1.0' . PHP_EOL;
+        $report .= '    Temp Folder Path: ' . $tempFolderPath . PHP_EOL;
 
         return $report;
-    }
-
-    /**
-     * Get API key (with prefix if set)
-     *
-     * @param  string $apiKeyIdentifier name of apikey
-     *
-     * @return null|string API key with the prefix
-     */
-    public function getApiKeyWithPrefix($apiKeyIdentifier)
-    {
-        $prefix = $this->getApiKeyPrefix($apiKeyIdentifier);
-        $apiKey = $this->getApiKey($apiKeyIdentifier);
-
-        if ($apiKey === null) {
-            return null;
-        }
-
-        if ($prefix === null) {
-            $keyWithPrefix = $apiKey;
-        } else {
-            $keyWithPrefix = $prefix . ' ' . $apiKey;
-        }
-
-        return $keyWithPrefix;
     }
 
     /**
@@ -445,8 +466,8 @@ nnn     *
         $hosts = $this->getHostSettings();
 
         // check array index out of bound
-        if ($index < 0 || $index >= sizeof($hosts)) {
-            throw new \InvalidArgumentException("Invalid index $index when selecting the host. Must be less than ".sizeof($hosts));
+        if ($index < 0 || $index >= count($hosts)) {
+            throw new InvalidArgumentException("Invalid index $index when selecting the host. Must be less than ".count($hosts));
         }
 
         $host = $hosts[$index];
@@ -458,7 +479,7 @@ nnn     *
                 if (in_array($variables[$name], $variable["enum_values"], true)) { // check to see if the value is in the enum
                     $url = str_replace("{".$name."}", $variables[$name], $url);
                 } else {
-                    throw new \InvalidArgumentException("The variable `$name` in the host URL has invalid value ".$variables[$name].". Must be ".join(',', $variable["enum_values"]).".");
+                    throw new InvalidArgumentException("The variable `$name` in the host URL has invalid value ".$variables[$name].". Must be ".implode(',', $variable["enum_values"]).".");
                 }
             } else {
                 // use default value

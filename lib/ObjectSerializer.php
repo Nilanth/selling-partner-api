@@ -2,7 +2,7 @@
 /**
  * ObjectSerializer
  *
- * PHP version 7.2
+ * PHP version 7.3
  *
  * @category Class
  * @package  SellingPartnerApi
@@ -120,12 +120,17 @@ class ObjectSerializer
      * the path, by url-encoding.
      *
      * @param string $value a string which will be part of the path
+     * @param bool $isPath if true, slashes in $value will not be encoded
      *
      * @return string the serialized object
      */
-    public static function toPathValue($value)
+    public static function toPathValue($value, $isPath = false)
     {
-        return rawurlencode(self::toString($value));
+        $encoded =  rawurlencode(self::toString($value));
+        if ($isPath) {
+            $encoded = str_replace('%2F', '/', $encoded);
+        }
+        return $encoded;
     }
 
     /**
@@ -259,7 +264,7 @@ class ObjectSerializer
         }
 
         if (strcasecmp(substr($class, -2), '[]') === 0) {
-            $data = is_string($data) ? json_decode($data) : $data;
+            $data = is_string($data) ? json_decode($data, true) : $data;
             
             if (!is_array($data)) {
                 throw new \InvalidArgumentException("Invalid array '$class'");
@@ -315,8 +320,18 @@ class ObjectSerializer
             }
         }
 
+        // Sometimes Amazon returns empty objects instead of empty strings
+        if ($class === 'string' && gettype($data) === 'object' && json_encode($data) === '{}') {
+            return '';
+        }
+
         /** @psalm-suppress ParadoxicalCondition */
         if (in_array($class, ['DateTime', 'bool', 'boolean', 'byte', 'double', 'float', 'int', 'integer', 'mixed', 'number', 'object', 'string', 'void'], true)) {
+            // Boolean value "false" will get parsed to 1 instead of 0 by default
+            if (($class === 'bool' || $class === 'boolean') && $data === 'false') {
+                $data = false;
+            }
+
             settype($data, $class);
             return $data;
         }
@@ -327,9 +342,9 @@ class ObjectSerializer
             // determine file name
             if (array_key_exists('Content-Disposition', $httpHeaders) &&
                 preg_match('/inline; filename=[\'"]?([^\'"\s]+)[\'"]?$/i', $httpHeaders['Content-Disposition'], $match)) {
-                $filename = Configuration::getDefaultConfiguration()->getTempFolderPath() . DIRECTORY_SEPARATOR . self::sanitizeFilename($match[1]);
+                $filename = Configuration::getTempFolderPath() . DIRECTORY_SEPARATOR . self::sanitizeFilename($match[1]);
             } else {
-                $filename = tempnam(Configuration::getDefaultConfiguration()->getTempFolderPath(), '');
+                $filename = tempnam(Configuration::getTempFolderPath(), '');
             }
 
             $file = fopen($filename, 'w');
@@ -368,6 +383,10 @@ class ObjectSerializer
                 if (isset($data->{$instance::attributeMap()[$property]})) {
                     $propertyValue = $data->{$instance::attributeMap()[$property]};
                     $instance->$propertySetter(self::deserialize($propertyValue, $type, null));
+                }
+
+                if ($httpHeaders !== null) {
+                    $instance->setHeaders($httpHeaders);
                 }
             }
             return $instance;

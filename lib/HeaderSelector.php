@@ -1,7 +1,7 @@
 <?php
 /**
  * ApiException
- * PHP version 7.2
+ * PHP version 7.3
  *
  * @category Class
  * @package  SellingPartnerApi
@@ -52,8 +52,6 @@ class HeaderSelector
 
         $headers['Content-Type'] = $this->selectContentTypeHeader($contentTypes);
         $headers['Host'] = $this->configuration->getBareHost();
-        $headers['x-amz-access-token'] = $this->configuration->getAccessToken($scope);
-        $headers['x-amz-date'] = $this->configuration->getRequestDatetime();
         return $headers;
     }
 

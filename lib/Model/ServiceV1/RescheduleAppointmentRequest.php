@@ -11,7 +11,7 @@
 /**
  * Selling Partner API for Services
  *
- * With the Services API, you can build applications that help service providers get and modify their service orders.
+ * With the Services API, you can build applications that help service providers get and modify their service orders and manage their resources.
  *
  * The version of the OpenAPI document: v1
  * 
@@ -42,7 +42,7 @@ use \SellingPartnerApi\Model\ModelInterface;
  * @template TKey int|null
  * @template TValue mixed|null  
  */
-class RescheduleAppointmentRequest implements ModelInterface, ArrayAccess, \JsonSerializable
+class RescheduleAppointmentRequest implements ModelInterface, ArrayAccess, \JsonSerializable, \IteratorAggregate
 {
     public const DISCRIMINATOR = null;
 
@@ -194,7 +194,6 @@ class RescheduleAppointmentRequest implements ModelInterface, ArrayAccess, \Json
     public function listInvalidProperties()
     {
         $invalidProperties = [];
-
         if ($this->container['appointment_time'] === null) {
             $invalidProperties[] = "'appointment_time' can't be null";
         }
@@ -252,7 +251,7 @@ class RescheduleAppointmentRequest implements ModelInterface, ArrayAccess, \Json
     /**
      * Sets reschedule_reason_code
      *
-     * @param string $reschedule_reason_code Appointment reschedule reason code.
+     * @param string $reschedule_reason_code The appointment reschedule reason code.
      *
      * @return self
      */
@@ -354,6 +353,53 @@ class RescheduleAppointmentRequest implements ModelInterface, ArrayAccess, \Json
     public function toHeaderValue()
     {
         return json_encode(ObjectSerializer::sanitizeForSerialization($this));
+    }
+
+    /**
+     * Enable iterating over all of the model's attributes in $key => $value format
+     *
+     * @return \Traversable
+     */
+    public function getIterator(): \Traversable
+    {
+        return (function () {
+            foreach ($this->container as $key => $value) {
+                yield $key => $value;
+            }
+        })();
+    }
+
+    /**
+     * Retrieves the property with the given name by converting the property accession
+     * to a getter call.
+     *
+     * @param string $propertyName
+     * @return mixed
+     */
+    public function __get($propertyName)
+    {
+        // This doesn't make a syntactical difference since PHP is case-insensitive, but
+        // makes error messages clearer (e.g. "Call to undefined method getFoo()" rather
+        // than "Call to undefined method getfoo()").
+        $ucProp = ucfirst($propertyName);
+        $getter = "get$ucProp";
+        return $this->$getter();
+    }
+
+    /**
+     * Sets the property with the given name by converting the property accession
+     * to a setter call.
+     *
+     * @param string $propertyName
+     * @param mixed $propertyValue
+     * @return SellingPartnerApi\Model\ServiceV1\RescheduleAppointmentRequest
+     */
+    public function __set($propertyName, $propertyValue)
+    {
+        $ucProp = ucfirst($propertyName);
+        $setter = "set$ucProp";
+        $this->$setter($propertyValue);
+        return $this;
     }
 }
 

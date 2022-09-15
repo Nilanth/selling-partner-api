@@ -41,7 +41,7 @@ use \SellingPartnerApi\Model\ModelInterface;
  * @template TKey int|null
  * @template TValue mixed|null  
  */
-class GetSchemaResponse implements ModelInterface, ArrayAccess, \JsonSerializable
+class GetSchemaResponse implements ModelInterface, ArrayAccess, \JsonSerializable, \IteratorAggregate
 {
     public const DISCRIMINATOR = null;
 
@@ -59,7 +59,7 @@ class GetSchemaResponse implements ModelInterface, ArrayAccess, \JsonSerializabl
       */
     protected static $openAPITypes = [
         '_links' => '\SellingPartnerApi\Model\MessagingV1\GetSchemaResponseLinks',
-        'payload' => 'object',
+        'payload' => 'map[string,object]',
         'errors' => '\SellingPartnerApi\Model\MessagingV1\Error[]'
     ];
 
@@ -199,7 +199,6 @@ class GetSchemaResponse implements ModelInterface, ArrayAccess, \JsonSerializabl
     public function listInvalidProperties()
     {
         $invalidProperties = [];
-
         return $invalidProperties;
     }
 
@@ -241,7 +240,7 @@ class GetSchemaResponse implements ModelInterface, ArrayAccess, \JsonSerializabl
     /**
      * Gets payload
      *
-     * @return object|null
+     * @return map[string,object]|null
      */
     public function getPayload()
     {
@@ -251,7 +250,7 @@ class GetSchemaResponse implements ModelInterface, ArrayAccess, \JsonSerializabl
     /**
      * Sets payload
      *
-     * @param object|null $payload A JSON schema document describing the expected payload of the action. This object can be validated against <a href=http://json-schema.org/draft-04/schema>http://json-schema.org/draft-04/schema</a>.
+     * @param map[string,object]|null $payload A JSON schema document describing the expected payload of the action. This object can be validated against <a href=http://json-schema.org/draft-04/schema>http://json-schema.org/draft-04/schema</a>.
      *
      * @return self
      */
@@ -376,6 +375,53 @@ class GetSchemaResponse implements ModelInterface, ArrayAccess, \JsonSerializabl
     public function toHeaderValue()
     {
         return json_encode(ObjectSerializer::sanitizeForSerialization($this));
+    }
+
+    /**
+     * Enable iterating over all of the model's attributes in $key => $value format
+     *
+     * @return \Traversable
+     */
+    public function getIterator(): \Traversable
+    {
+        return (function () {
+            foreach ($this->container as $key => $value) {
+                yield $key => $value;
+            }
+        })();
+    }
+
+    /**
+     * Retrieves the property with the given name by converting the property accession
+     * to a getter call.
+     *
+     * @param string $propertyName
+     * @return mixed
+     */
+    public function __get($propertyName)
+    {
+        // This doesn't make a syntactical difference since PHP is case-insensitive, but
+        // makes error messages clearer (e.g. "Call to undefined method getFoo()" rather
+        // than "Call to undefined method getfoo()").
+        $ucProp = ucfirst($propertyName);
+        $getter = "get$ucProp";
+        return $this->$getter();
+    }
+
+    /**
+     * Sets the property with the given name by converting the property accession
+     * to a setter call.
+     *
+     * @param string $propertyName
+     * @param mixed $propertyValue
+     * @return SellingPartnerApi\Model\MessagingV1\GetSchemaResponse
+     */
+    public function __set($propertyName, $propertyValue)
+    {
+        $ucProp = ucfirst($propertyName);
+        $setter = "set$ucProp";
+        $this->$setter($propertyValue);
+        return $this;
     }
 }
 

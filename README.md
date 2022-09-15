@@ -12,10 +12,15 @@ If you've found this library useful, please consider [becoming a Sponsor](https:
 
 ## Features
 
-* Supports all Selling Partner API operations (for Sellers and Vendors) as of 5/30/2022 ([see here](#supported-api-segments) for links to documentation for all calls)
+* Supports all Selling Partner API operations (for Sellers and Vendors) as of 8/19/2022 ([see here](#supported-api-segments) for links to documentation for all calls)
 * Supports applications made with both IAM user and IAM role ARNs ([docs](#setup))
 * Automatically generates Restricted Data Tokens for all calls that require them -- no extra calls to the Tokens API needed
 * Includes a [`Document` helper class](#uploading-and-downloading-documents) for uploading and downloading feed/report documents
+
+
+## Sponsors
+
+* **[Tesmo](https://tesmollc.com)**
 
 
 ## Installation
@@ -31,6 +36,7 @@ This README is divided into several sections:
 * [Setup](#setup)
     * [Configuration options](#configuration-options)
 * [Examples](#examples)
+* [Debug mode](#debug-mode)
 * [Supported API segments](#supported-api-segments)
     * [Seller APIs](#seller-apis)
     * [Vendor APIs](#vendor-apis)
@@ -146,6 +152,8 @@ try {
 ?>
 ```
 
+### Debug mode
+
 To get debugging output when you make an API request, you can call `$config->setDebug(true)`. By default, debug output goes to `stdout` via `php://output`, but you can redirect it a file with `$config->setDebugFile('<path>')`.
 
 ```php
@@ -200,6 +208,7 @@ It also means that if a new version of an existing API is introduced, the librar
 * [Service API (V1)](https://github.com/jlevers/selling-partner-api/blob/main/docs/Api/ServiceV1Api.md)
 * [Shipment Invoicing API (V0)](https://github.com/jlevers/selling-partner-api/blob/main/docs/Api/ShipmentInvoicingV0Api.md)
 * [Shipping API (V1)](https://github.com/jlevers/selling-partner-api/blob/main/docs/Api/ShippingV1Api.md)
+* [Shipping API (V2)](https://github.com/jlevers/selling-partner-api/blob/main/docs/Api/ShippingV2Api.md)
 * [Small and Light API (V1)](https://github.com/jlevers/selling-partner-api/blob/main/docs/Api/SmallAndLightV1Api.md)
 * [Solicitations API (V1)](https://github.com/jlevers/selling-partner-api/blob/main/docs/Api/SolicitationsV1Api.md)
 * [Restricted Data Tokens API (2021-03-01)](https://github.com/jlevers/selling-partner-api/blob/main/docs/Api/TokensV20210301Api.md)
@@ -299,10 +308,8 @@ $feedsApi = new FeedsApi($config);
 $feedId = '1234567890';  // From the createFeed call
 $feed = $api->getFeed($feedId);
 
-$feedResultDocumentId = $feed->getResultFeedDocumentId();
+$feedResultDocumentId = $feed->resultFeedDocumentId;
 $feedResultDocument = $api->getFeedDocument($feedResultDocumentId);
-
-$doc = new Document($documentInfo, $feedType);
 
 $docToDownload = new SellingPartnerApi\Document($feedResultDocument, $feedType);
 $contents = $docToDownload->download();  // The raw report data
@@ -312,7 +319,7 @@ $data = $docToDownload->getData();  // Parsed/formatted report data
 
 ## Working with model classes
 
-Most operations have one or more models associated with it. These models are classes that contain the data needed to make a certain kind of request to the API, or contain the data returned by a given request type. All of the models share the same general interface: you can either specify all the model's attributes during initialization, or use setter methods to set each attribute after the fact. Here's an example using the Service API's `Buyer` model ([docs](https://github.com/jlevers/selling-partner-api/blob/main/docs/Model/ServiceV1/Buyer.md), ([source](https://github.com/jlevers/selling-partner-api/blob/main/lib/Model/ServiceV1/Buyer.php)).
+Most operations have one or more models associated with it. These models are classes that contain the data needed to make a certain kind of request to the API, or contain the data returned by a given request type. All of the models share the same general interface: you can either specify all the model's attributes during initialization, or set each attribute after the fact. Here's an example using the Service API's `Buyer` model ([docs](https://github.com/jlevers/selling-partner-api/blob/main/docs/Model/ServiceV1/Buyer.md), ([source](https://github.com/jlevers/selling-partner-api/blob/main/lib/Model/ServiceV1/Buyer.php)).
 
 The `Buyer` model has four attributes: `buyer_id`, `name`, `phone`, and `is_prime_member`. (If you're wondering how you would figure out which attributes the model has on your own, check out the `docs` link above.) To create an instance of the `Buyer` model with all those attributes set:
 
@@ -329,19 +336,19 @@ Alternatively, you can create an instance of the `Buyer` model and then populate
 
 ```php
 $buyer = new SellingPartnerApi\Model\ServiceV1\Buyer();
-$buyer->setBuyerId("ABCDEFGHIJKLMNOPQRSTU0123456");
-$buyer->setName("Jane Doe");
-$buyer->setPhone("+12345678901");
-$buyer->setIsPrimeMember(true);
+$buyer->buyerId = "ABCDEFGHIJKLMNOPQRSTU0123456";
+$buyer->name = "Jane Doe";
+$buyer->phone = "+12345678901";
+$buyer->isPrimeMember = true;
 ```
 
-Each model also has the getter methods you might expect:
+Each model also has the property accessors you might expect:
 
 ```php
-$buyer->getBuyerId();        // -> "ABCDEFGHIJKLMNOPQRSTU0123456"
-$buyer->getName();           // -> "Jane Doe"
-$buyer->getPhone();          // -> "+12345678901"
-$buyer->getIsPrimeMember();  // -> true
+$buyer->buyerId;        // -> "ABCDEFGHIJKLMNOPQRSTU0123456"
+$buyer->name;           // -> "Jane Doe"
+$buyer->phone;          // -> "+12345678901"
+$buyer->isPrimeMember;  // -> true
 ```
 
 Models can (and usually do) have other models as attributes:
@@ -353,8 +360,8 @@ $serviceJob = new SellingPartnerApi\Model\ServiceV1\Buyer([
     // ...
 ]);
 
-$serviceJob->getBuyer();             // -> [Buyer instance]
-$serviceJob->getBuyer()->getName();  // -> "Jane Doe"
+$serviceJob->buyer;        // -> [Buyer instance]
+$serviceJob->buyer->name;  // -> "Jane Doe"
 ```
 
 
@@ -373,7 +380,7 @@ $config = new Configuration([...]);
 $api = new Api\SellersApi($config);
 try {
     $result = $api->getMarketplaceParticipations();
-    $headers = $result->getHeaders();
+    $headers = $result->headers;
     print_r($headers);
 } catch (Exception $e) {
     echo 'Exception when calling SellersApi->getMarketplaceParticipations: ', $e->getMessage(), PHP_EOL;
@@ -423,7 +430,7 @@ $config = new Configuration([
 $api = new Api\SellersApi($config);
 try {
     $result = $api->getMarketplaceParticipations();
-    $headers = $result->getHeaders();
+    $headers = $result->headers;
     print_r($headers);
 } catch (Exception $e) {
     echo 'Exception when calling SellersApi->getMarketplaceParticipations: ', $e->getMessage(), PHP_EOL;
@@ -470,7 +477,7 @@ $config = new Configuration([
 $api = new Api\SellersApi($config);
 try {
     $result = $api->getMarketplaceParticipations();
-    $headers = $result->getHeaders();
+    $headers = $result->headers;
     print_r($headers);
 } catch (Exception $e) {
     echo 'Exception when calling SellersApi->getMarketplaceParticipations: ', $e->getMessage(), PHP_EOL;

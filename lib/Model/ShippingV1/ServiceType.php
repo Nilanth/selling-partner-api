@@ -11,7 +11,7 @@
 /**
  * Selling Partner API for Shipping
  *
- * Provides programmatic access to Amazon Shipping APIs.
+ * Provides programmatic access to Amazon Shipping APIs.  **Note:** If you are new to the Amazon Shipping API, refer to the latest version of <a href=\"https://developer-docs.amazon.com/amazon-shipping/docs/shipping-api-v2-reference\">Amazon Shipping API (v2)</a> on the <a href=\"https://developer-docs.amazon.com/amazon-shipping/\">Amazon Shipping Developer Documentation</a> site.
  *
  * The version of the OpenAPI document: v1
  * 
@@ -39,6 +39,8 @@ use \SellingPartnerApi\Model\ModelInterface;
  */
 class ServiceType
 {
+    public $value;
+
     /**
      * Possible values of this enum
      */
@@ -57,6 +59,25 @@ class ServiceType
             self::STANDARD,
             self::PREMIUM,
         ];
+    }
+
+    public function __construct($value)
+    {
+        if (is_null($value) || !in_array($value, self::getAllowableEnumValues())) {
+            throw new \InvalidArgumentException(sprintf("Invalid value for enum 'ServiceType', must be one of '%s'", implode("', '", self::getAllowableEnumValues())));
+        }
+
+        $this->value = $value;
+    }
+
+    /**
+     * Convert the enum value to a string.
+     *
+     * @return string
+     */
+    public function __toString()
+    {
+        return $this->value;
     }
 }
 

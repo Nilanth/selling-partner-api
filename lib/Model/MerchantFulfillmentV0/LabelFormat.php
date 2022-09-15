@@ -39,11 +39,14 @@ use \SellingPartnerApi\Model\ModelInterface;
  */
 class LabelFormat
 {
+    public $value;
+
     /**
      * Possible values of this enum
      */
     const PDF = 'PDF';
     const PNG = 'PNG';
+    const ZPL = 'ZPL';
     const ZPL203 = 'ZPL203';
     const ZPL300 = 'ZPL300';
     const SHIPPING_SERVICE_DEFAULT = 'ShippingServiceDefault';
@@ -58,11 +61,31 @@ class LabelFormat
         return [
             self::PDF,
             self::PNG,
+            self::ZPL,
             self::ZPL203,
             self::ZPL300,
             self::SHIPPING_SERVICE_DEFAULT,
             self::EMPTY,
         ];
+    }
+
+    public function __construct($value)
+    {
+        if (is_null($value) || !in_array($value, self::getAllowableEnumValues())) {
+            throw new \InvalidArgumentException(sprintf("Invalid value for enum 'LabelFormat', must be one of '%s'", implode("', '", self::getAllowableEnumValues())));
+        }
+
+        $this->value = $value;
+    }
+
+    /**
+     * Convert the enum value to a string.
+     *
+     * @return string
+     */
+    public function __toString()
+    {
+        return $this->value;
     }
 }
 

@@ -28,14 +28,14 @@ class Document
     /**
      * @param Model\Reports\ReportDocument|Model\Feeds\FeedDocument|Model\Feeds\CreateFeedDocumentResponse $documentInfo
      *      The payload of a successful call to getReportDocument, createFeedDocument, or getFeedDocument
-     * @param ?array['contentType' => string, 'name' => string] $documentType
+     * @param array['contentType' => string, 'name' => string] $documentType
      *      Must be one of the constants defined in the ReportType or FeedType classes. When downloading a feed
      *      result document, pass the FeedType constant corresponding to the feed type that produced the result document..
      * @param ?\GuzzleHttp\Client $client  The Guzzle client to use. If not provided, a new one will be created.
      */
     public function __construct(
         object $documentInfo,
-        ?array $documentType = ReportType::__FEED_RESULT_REPORT,  // $documentType will be required in the next major version
+        array $documentType,
         ?Client $client = null
     ) {
         // Make sure $documentInfo is a valid type
@@ -50,9 +50,6 @@ class Document
 
         if ($documentType === null) {
             throw new RuntimeException('$documentType cannot be null');
-        } else if ($documentType === ReportType::__FEED_RESULT_REPORT) {
-            echo 'ReportType::__FEED_RESULT_REPORT is deprecated, and may not result in a properly parsed feed result document.';
-            echo 'Please pass the feed type constant for the feed whose result document is being parsed (e.g., FeedType::POST_PRODUCT_DATA.';
         }
 
         $this->contentType = $documentType['contentType'];
@@ -125,18 +122,21 @@ class Document
         if (!($this->contentType === ContentType::XLSX || $this->contentType === ContentType::PDF)) {
             if (!is_null($encoding) && !in_array(strtoupper($encoding), mb_list_encodings())) {
                 $encoding = null;
-            } else {
+            } else if (is_null($encoding)) {
                 $encodings = ['UTF-8'];
                 if ($response->hasHeader('content-type')) {
                     $httpContentType = $response->getHeader('content-type');
                     $parsedHeader = \GuzzleHttp\Psr7\Header::parse($httpContentType);
                     if (isset($parsedHeader[0]['charset'])) {
-                        array_unshift($encodings, $parsedHeader[0]['charset']);
+                        // Some EU reports are reporting Cp1252 charset in the download headers and not being correctly
+                        // parsed by PHP. In those cases, replacing the encoding value with ISO-8859-1 allows PHP to
+                        // correctly detect and convert the document to UTF-8
+                        array_unshift($encodings, str_replace("Cp1252", "ISO-8859-1", $parsedHeader[0]['charset']));
                     }
                 }
                 $encoding = mb_detect_encoding($contents, $encodings, true);
             }
-            $contents = mb_convert_encoding($contents, "UTF-8", $encoding ?? mb_internal_encoding());
+            $contents = mb_convert_encoding($contents, "UTF-8", $encoding ?: mb_internal_encoding());
         }
 
         $this->tmpFilename = tempnam(sys_get_temp_dir(), "tempdoc_spapi");
@@ -158,7 +158,7 @@ class Document
                 $reader->setEnclosure(chr(8));
             case ContentType::CSV:
             case ContentType::XLSX:
-                $spreadsheet = IOFactory::load($this->tmpFilename);
+                $spreadsheet = $reader->load($this->tmpFilename);
                 if ($this->contentType !== ContentType::XLSX) {
                     $sheet = $spreadsheet->getSheet(0)->toArray();
                     // Turn each row of data into an associative array with the headers as keys
